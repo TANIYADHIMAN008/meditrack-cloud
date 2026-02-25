@@ -1,32 +1,32 @@
-from sqlalchemy import Column, String, ForeignKey
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import Column, Integer, String, ForeignKey
 from sqlalchemy.orm import relationship
 from .database import Base
-import uuid
 
 
 class User(Base):
     __tablename__ = "users"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    name = Column(String, nullable=False)
-    email = Column(String, unique=True, nullable=False)
-    password_hash = Column(String, nullable=False)
-    role = Column(String, nullable=False)
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(100), nullable=False)
+    email = Column(String(100), unique=True, index=True, nullable=False)
+    password = Column(String(255), nullable=False)
+    role = Column(String(50), nullable=False)
 
-    # Relationship
-    patients = relationship("Patient", back_populates="doctor")
+    # Relationship with Patient
+    patients = relationship(
+        "Patient",
+        back_populates="doctor",
+        cascade="all, delete"
+    )
 
 
 class Patient(Base):
     __tablename__ = "patients"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    name = Column(String, nullable=False)
-    age = Column(String, nullable=False)
-    condition = Column(String, nullable=False)
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(100), nullable=False)
+    age = Column(Integer, nullable=False)
+    condition = Column(String(255))
 
-    doctor_id = Column(UUID(as_uuid=True), ForeignKey("users.id"))
-
-    # Relationship
+    doctor_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"))
     doctor = relationship("User", back_populates="patients")

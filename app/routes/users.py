@@ -1,75 +1,19 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
-from passlib.context import CryptContext
-
-from jose import JWTError, jwt
 
 from .. import models, schemas
 from ..database import get_db
-from ..auth import create_access_token, verify_password
+from ..auth import create_access_token, verify_password, get_password_hash, get_current_user
 
-# ---------------------------
-# Router
-# ---------------------------
+
 router = APIRouter()
 
-# ---------------------------
-# Password Hashing
-# ---------------------------
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-def hash_password(password: str):
-    return pwd_context.hash(password)
+# ===============================
+# REGISTER
+# ===============================
 
-# ---------------------------
-# OAuth2 Scheme
-# ---------------------------
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
-
-# ---------------------------
-# SECRET CONFIG (Must match auth.py)
-# ---------------------------
-SECRET_KEY = "your-secret-key"
-ALGORITHM = "HS256"
-
-# ---------------------------
-# Get Current User (JWT Protected)
-# ---------------------------
-def get_current_user(
-    token: str = Depends(oauth2_scheme),
-    db: Session = Depends(get_db)
-):
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        user_id: str = payload.get("sub")
-
-        if user_id is None:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid token"
-            )
-
-    except JWTError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token"
-        )
-
-    user = db.query(models.User).filter(models.User.id == user_id).first()
-
-    if user is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User not found"
-        )
-
-    return user
-
-
-# ---------------------------
-# Register User
-# ---------------------------
 @router.post("/register", response_model=schemas.UserResponse)
 def register_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
 
@@ -78,17 +22,14 @@ def register_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
     ).first()
 
     if existing_user:
-        raise HTTPException(
-            status_code=400,
-            detail="Email already registered"
-        )
+        raise HTTPException(status_code=400, detail="Email already registered")
 
-    hashed_password = hash_password(user.password)
+    hashed_password = get_password_hash(user.password)
 
     new_user = models.User(
         name=user.name,
         email=user.email,
-        password_hash=hashed_password,
+        password=hashed_password,
         role=user.role
     )
 
@@ -99,9 +40,10 @@ def register_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
     return new_user
 
 
-# ---------------------------
-# Login User
-# ---------------------------
+# ===============================
+# LOGIN
+# ===============================
+
 @router.post("/login")
 def login(
     form_data: OAuth2PasswordRequestForm = Depends(),
@@ -114,7 +56,7 @@ def login(
 
     if not user or not verify_password(
         form_data.password,
-        user.password_hash
+        user.password
     ):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -131,31 +73,12 @@ def login(
     }
 
 
-# ---------------------------
-# Protected Route
-# ---------------------------
+# ===============================
+# PROTECTED ROUTE
+# ===============================
+
 @router.get("/me", response_model=schemas.UserResponse)
 def read_current_user(
     current_user: models.User = Depends(get_current_user)
 ):
     return current_user
-@router.post("/patients", response_model=schemas.PatientResponse)
-def create_patient(
-    patient: schemas.PatientCreate,
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user)
-):
-    new_patient = models.Patient(
-        name=patient.name,
-        age=patient.age,
-        condition=patient.condition,
-        doctor_id=current_user.id
-    )
-
-    db.add(new_patient)
-    db.commit()
-    db.refresh(new_patient)
-
-    return new_patient
-
-

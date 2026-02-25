@@ -1,10 +1,10 @@
 from pydantic import BaseModel, EmailStr
-from uuid import UUID
+from typing import Optional
 
 
-# ---------------------------
-# User Schemas
-# ---------------------------
+# ===========================
+# USER SCHEMAS
+# ===========================
 
 class UserCreate(BaseModel):
     name: str
@@ -13,9 +13,8 @@ class UserCreate(BaseModel):
     role: str
 
 
-
 class UserResponse(BaseModel):
-    id: UUID
+    id: int   # 🔥 FIXED (was UUID)
     name: str
     email: EmailStr
     role: str
@@ -24,22 +23,22 @@ class UserResponse(BaseModel):
         from_attributes = True
 
 
-# ---------------------------
-# Patient Schemas
-# ---------------------------
+# ===========================
+# PATIENT SCHEMAS
+# ===========================
 
 class PatientCreate(BaseModel):
     name: str
-    age: str
+    age: int
     condition: str
 
 
 class PatientResponse(BaseModel):
-    id: UUID
+    id: int   # 🔥 FIXED (was UUID)
     name: str
-    age: str
+    age: int
     condition: str
+    doctor_id: Optional[int]   # 🔥 FIXED (was UUID)
 
     class Config:
         from_attributes = True
-

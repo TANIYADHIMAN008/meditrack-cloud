@@ -1,40 +1,123 @@
-from fastapi import Depends, HTTPException, status
-from jose import JWTError, jwt
-from fastapi.security import OAuth2PasswordBearer
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.database import get_db
-from app import models
+from .. import models, schemas
+from ..database import get_db
+from ..auth import require_role
 
-SECRET_KEY = "your-secret-key"
-ALGORITHM = "HS256"
+router = APIRouter(
+    prefix="/patients",
+    tags=["Patients"]
+)
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/login")
+# ===============================
+# CREATE PATIENT (Doctor Only)
+# ===============================
 
-
-def get_current_user(
-    token: str = Depends(oauth2_scheme),
-    db: Session = Depends(get_db)
+@router.post("/", response_model=schemas.PatientResponse, status_code=status.HTTP_201_CREATED)
+def create_patient(
+    patient: schemas.PatientCreate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_role("doctor"))
 ):
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
+    new_patient = models.Patient(
+        name=patient.name,
+        age=patient.age,
+        condition=patient.condition,
+        doctor_id=current_user.id
     )
 
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        user_id: str = payload.get("sub")
+    db.add(new_patient)
+    db.commit()
+    db.refresh(new_patient)
 
-        if user_id is None:
-            raise credentials_exception
+    return new_patient
 
-    except JWTError:
-        raise credentials_exception
 
-    user = db.query(models.User).filter(models.User.id == user_id).first()
+# ===============================
+# GET MY PATIENTS (Doctor Only)
+# ===============================
 
-    if user is None:
-        raise credentials_exception
+@router.get("/", response_model=list[schemas.PatientResponse])
+def get_my_patients(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_role("doctor"))
+):
+    patients = db.query(models.Patient).filter(
+        models.Patient.doctor_id == current_user.id
+    ).all()
 
-    return user
+    return patients
+
+
+# ===============================
+# UPDATE PATIENT (Doctor Only)
+# ===============================
+
+@router.put("/{patient_id}", response_model=schemas.PatientResponse)
+def update_patient(
+    patient_id: int,
+    updated_data: schemas.PatientCreate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_role("doctor"))
+):
+
+    patient = db.query(models.Patient).filter(
+        models.Patient.id == patient_id,
+        models.Patient.doctor_id == current_user.id
+    ).first()
+
+    if not patient:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Patient not found"
+        )
+
+    patient.name = updated_data.name
+    patient.age = updated_data.age
+    patient.condition = updated_data.condition
+
+    db.commit()
+    db.refresh(patient)
+
+    return patient
+
+
+# ===============================
+# DELETE PATIENT (Doctor Only)
+# ===============================
+
+@router.delete("/{patient_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_patient(
+    patient_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_role("doctor"))
+):
+
+    patient = db.query(models.Patient).filter(
+        models.Patient.id == patient_id,
+        models.Patient.doctor_id == current_user.id
+    ).first()
+
+    if not patient:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Patient not found"
+        )
+
+    db.delete(patient)
+    db.commit()
+
+    return
+
+
+# ===============================
+# ADMIN: GET ALL PATIENTS
+# ===============================
+
+@router.get("/all")
+def get_all_patients(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_role("admin"))
+):
+    return db.query(models.Patient).all()
